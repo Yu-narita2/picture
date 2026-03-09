@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>社員制服 撮影アプリ</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -42,7 +42,8 @@
       <div class="relative w-full aspect-[3/4] bg-black rounded-2xl overflow-hidden shadow-inner border border-gray-200">
         <!-- カメラビュー -->
         <div id="camera-view" class="absolute inset-0 w-full h-full">
-          <video id="video-element" class="w-full h-full" autoplay playsinline muted></video>
+          <video id="video-element" class="w-full h-full object-cover" autoplay playsinline muted></video>
+          <!-- 顔枠オーバーレイ -->
           <div class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
             <div class="w-56 h-56 border-4 border-yellow-400 rounded-full opacity-90 shadow-[0_0_0_2000px_rgba(0,0,0,0.5)] transform -translate-y-8"></div>
           </div>
@@ -120,7 +121,7 @@
         video.srcObject = stream;
         video.style.transform = facingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
       } catch (err) {
-        alert(`カメラの起動に失敗しました。\n\niPadのSafariで開いている場合は、URL欄の「ぁあ」や「AA」というボタンから、カメラへのアクセスを許可してください。`);
+        alert(`カメラの起動に失敗しました。URLバーの左側のアイコンから、カメラのアクセスを「許可」してください。`);
       }
     }
 
@@ -133,16 +134,28 @@
     }
 
     captureBtn.onclick = () => {
+      // 画像サイズを圧縮
+      const MAX_WIDTH = 800;
+      let width = video.videoWidth;
+      let height = video.videoHeight;
+      
+      if (width > MAX_WIDTH) {
+        height = Math.round(height * (MAX_WIDTH / width));
+        width = MAX_WIDTH;
+      }
+
       const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      canvas.width = width;
+      canvas.height = height;
       const ctx = canvas.getContext('2d');
       if (currentFacingMode === 'user') {
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
       }
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      capturedDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      
+      // 画質を0.6に下げてデータ量を削減
+      capturedDataUrl = canvas.toDataURL('image/jpeg', 0.6);
       previewImage.src = capturedDataUrl;
 
       cameraView.classList.add('hidden');
@@ -161,13 +174,11 @@
       cameraActions.classList.remove('hidden');
     };
 
-    saveBtn.onclick = () => {
-      // =======================================================
-      // ★ここに必ず「新しくデプロイしたURL」を入れてください！
-      // =======================================================
-      const gasUrl = "https://script.google.com/a/macros/ngoap.ana-g.com/s/AKfycbyTNaAuj9UEV9Id8WOO0jZMJcQkB54TTKeauU500AijLGglDJhthDPgPKeFVDTI_9238w/exec"; 
+    saveBtn.onclick = async () => {
+      // ★ここに【新しくデプロイしたGASのURL】を貼り付けてください
+      const gasUrl = "https://script.google.com/a/macros/ngoap.ana-g.com/s/AKfycbwlX0EbBCbg456qMicVSdpvS212x4bkrKXU1yJ9LA1xOKyfPz_-dG7g04xjH2MQYFxCdQ/exec"; 
 
-      if (gasUrl === "YOUR_GAS_WEB_APP_URL") {
+      if (gasUrl === "YOUR_GAS_WEB_APP_URL" || gasUrl.includes("AKfycbwtegjBsNGLpstkwtWVVes68UV8epC17xFsnzmxigf2oP7-KweazNxTt_lD0ummEbud")) {
         alert("コード内の gasUrl に、新しく発行したURLを貼り付けてください。");
         return;
       }
@@ -177,34 +188,36 @@
       saveBtn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> 保存中...';
       lucide.createIcons();
 
-      // ★裏技：隠しフォームにデータを詰めて「送信（画面遷移）」させる
-      const form = document.getElementById('gas_form');
-      const input = document.getElementById('gas_data');
-      const iframe = document.getElementById('hidden_iframe');
-
-      form.action = gasUrl;
-      input.value = JSON.stringify({
+      // 送信データの準備
+      const payload = JSON.stringify({
         fileName: inputField.value.replace('/', '_') + '.jpg',
         image: capturedDataUrl
       });
 
-      // 隠し枠の中で送信が終わったのを検知する
-      iframe.onload = () => {
+      try {
+        // ★iPadにブロックされない、最も確実な通信方法（URLエンコード方式）
+        await fetch(gasUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: 'data=' + encodeURIComponent(payload)
+        });
+
+        // 成功メッセージ
         alert("保存完了しました！\n管理者の共有ドライブに保存されました。\n削除を依頼する場合は岩田か成田までお知らせください。");
         inputField.value = '';
         validateInput();
         retakeBtn.click();
-        
+
+      } catch (error) {
+        alert('送信エラーが発生しました。ネットワークを確認してください。');
+      } finally {
         saveBtn.disabled = false;
         saveBtn.innerHTML = originalHtml;
         lucide.createIcons();
-        
-        // 連続でイベントが起きないようにリセット
-        iframe.onload = null;
-      };
-
-      // 送信実行！
-      form.submit();
+      }
     };
 
     inputField.addEventListener('input', validateInput);
