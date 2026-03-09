@@ -12,8 +12,8 @@
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen font-sans text-gray-800">
-  
-  <div class="max-w-md mx-auto bg-white min-h-screen shadow-xl flex flex-col relative overflow-hidden">
+
+  <div id="app-container" class="max-w-md mx-auto bg-white min-h-screen shadow-xl flex flex-col relative overflow-hidden">
     <header class="bg-blue-700 text-white p-4 text-center shadow-md z-10">
       <h1 class="text-lg font-bold flex items-center justify-center gap-2">
         <i data-lucide="camera" class="w-5 h-5"></i>
@@ -38,7 +38,7 @@
         </div>
       </div>
 
-      <!-- カメラ・プレビューエリア -->
+      <!-- カメラ・プレビューエリア（顔枠復活！） -->
       <div class="relative w-full aspect-[3/4] bg-black rounded-2xl overflow-hidden shadow-inner border border-gray-200">
         <!-- カメラビュー -->
         <div id="camera-view" class="absolute inset-0 w-full h-full">
@@ -81,18 +81,8 @@
           </button>
         </div>
       </div>
-
-      <!-- ★追加：エラー原因を突き止めるための通信モニター -->
-      <div id="debug-area" class="hidden mt-4 p-3 bg-red-50 border-2 border-red-300 rounded-xl">
-        <p class="text-xs font-bold text-red-600 mb-2">【システム確認用】通信中... 下の白い枠に何が出ますか？</p>
-        <iframe name="hidden_iframe" id="hidden_iframe" class="w-full h-40 bg-white border border-gray-300 rounded-lg"></iframe>
-      </div>
     </main>
   </div>
-
-  <form id="gas_form" method="POST" target="hidden_iframe" style="display:none;">
-    <input type="hidden" name="data" id="gas_data">
-  </form>
 
   <script>
     lucide.createIcons();
@@ -125,7 +115,7 @@
         video.srcObject = stream;
         video.style.transform = facingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
       } catch (err) {
-        alert(`カメラの起動に失敗しました。URLバーの左側のアイコンから、カメラのアクセスを「許可」してください。`);
+        alert(`カメラの起動に失敗しました。URLバーの左側のアイコン等から、カメラへのアクセスを許可してください。`);
       }
     }
 
@@ -176,59 +166,73 @@
       previewActions.classList.remove('grid');
       cameraView.classList.remove('hidden');
       cameraActions.classList.remove('hidden');
-      document.getElementById('debug-area').classList.add('hidden'); // モニターを隠す
+      
+      // 入力をリセット
+      inputField.value = '';
+      validateInput();
     };
 
-    saveBtn.onclick = async () => {
-      // ★ここに【新しくデプロイしたGASのURL】を貼り付けてください
-      const gasUrl = "https://script.google.com/a/macros/ngoap.ana-g.com/s/AKfycbx_HJSpZxHvQ3-u_tw3rO6Mm9KyZq7b2TsvIZo0_TG8D3IgS_0mTnOwjfHJNZKmzooGiQ/exec"; 
+    saveBtn.onclick = () => {
+      if (!capturedDataUrl) return;
 
-      if (gasUrl === "YOUR_GAS_WEB_APP_URL" || gasUrl.includes("AKfycbwtegjBsNGLpstkwtWVVes68UV8epC17xFsnzmxigf2oP7-KweazNxTt_lD0ummEbud")) {
+      // ★ここに新しく発行したGASのURL（/execで終わるもの）を貼り付けてください
+      const gasUrl = "★ここにGASのウェブアプリURLを貼り付ける★";
+
+      if (gasUrl.includes("★")) {
         alert("コード内の gasUrl に、新しく発行したURLを貼り付けてください。");
         return;
       }
 
       saveBtn.disabled = true;
       const originalHtml = saveBtn.innerHTML;
-      saveBtn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> 保存中...';
+      saveBtn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> 認証＆通信中...';
       lucide.createIcons();
 
-      // 送信データの準備
-      const payload = JSON.stringify({
-        fileName: inputField.value.replace('/', '_') + '.jpg',
-        image: capturedDataUrl
-      });
-
-      // ★原因特定のためのデバッグ用モニターを表示
-      const debugArea = document.getElementById('debug-area');
-      const form = document.getElementById('gas_form');
-      const input = document.getElementById('gas_data');
-      const iframe = document.getElementById('hidden_iframe');
-
-      debugArea.classList.remove('hidden');
+      // ★ 最終奥義：GASのページを別タブで開いて、写真データを直接パスする！
+      const gasWindow = window.open(gasUrl, '_blank');
       
-      form.action = gasUrl;
-      input.value = payload;
+      if (!gasWindow) {
+        alert("ポップアップがブロックされました。\nブラウザの設定でこのサイトのポップアップを「許可」してください。");
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalHtml;
+        lucide.createIcons();
+        return;
+      }
 
-      iframe.onload = () => {
-        // 送信が終わったら、結果が見えるように少しだけ待つ
-        setTimeout(() => {
+      // GASの別タブからの連絡を待つ処理
+      const messageHandler = (e) => {
+        // GAS画面から「準備できたよ」と来たら、写真を投げる
+        if (e.data === 'READY') {
+          gasWindow.postMessage({
+            type: 'SAVE_IMAGE',
+            fileName: inputField.value.replace('/', '_') + '.jpg',
+            image: capturedDataUrl
+          }, '*');
+        } 
+        // GAS画面から「成功したよ」と来たら完了処理
+        else if (e.data === 'SUCCESS') {
+          window.removeEventListener('message', messageHandler);
           alert("保存完了しました！\n管理者の共有ドライブに保存されました。\n削除を依頼する場合は岩田か成田までお知らせください。");
           inputField.value = '';
           validateInput();
           retakeBtn.click();
-          debugArea.classList.add('hidden'); // 成功したらモニターを隠す
           
           saveBtn.disabled = false;
           saveBtn.innerHTML = originalHtml;
           lucide.createIcons();
-          
-          iframe.onload = null;
-        }, 3000); // 結果を見るために3秒待ちます
+        } 
+        // エラーが来た場合
+        else if (e.data === 'ERROR') {
+          window.removeEventListener('message', messageHandler);
+          alert('保存に失敗しました。');
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = originalHtml;
+          lucide.createIcons();
+        }
       };
 
-      // 送信実行！
-      form.submit();
+      // 連絡待ちをスタート
+      window.addEventListener('message', messageHandler);
     };
 
     inputField.addEventListener('input', validateInput);
