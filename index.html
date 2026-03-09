@@ -81,11 +81,15 @@
           </button>
         </div>
       </div>
+
+      <!-- ★追加：エラー原因を突き止めるための通信モニター -->
+      <div id="debug-area" class="hidden mt-4 p-3 bg-red-50 border-2 border-red-300 rounded-xl">
+        <p class="text-xs font-bold text-red-600 mb-2">【システム確認用】通信中... 下の白い枠に何が出ますか？</p>
+        <iframe name="hidden_iframe" id="hidden_iframe" class="w-full h-40 bg-white border border-gray-300 rounded-lg"></iframe>
+      </div>
     </main>
   </div>
 
-  <!-- ★追加：セキュリティを突破するための隠し通信枠 -->
-  <iframe name="hidden_iframe" id="hidden_iframe" style="display:none;"></iframe>
   <form id="gas_form" method="POST" target="hidden_iframe" style="display:none;">
     <input type="hidden" name="data" id="gas_data">
   </form>
@@ -172,11 +176,12 @@
       previewActions.classList.remove('grid');
       cameraView.classList.remove('hidden');
       cameraActions.classList.remove('hidden');
+      document.getElementById('debug-area').classList.add('hidden'); // モニターを隠す
     };
 
     saveBtn.onclick = async () => {
       // ★ここに【新しくデプロイしたGASのURL】を貼り付けてください
-      const gasUrl = "https://script.google.com/a/macros/ngoap.ana-g.com/s/AKfycbwlX0EbBCbg456qMicVSdpvS212x4bkrKXU1yJ9LA1xOKyfPz_-dG7g04xjH2MQYFxCdQ/exec"; 
+      const gasUrl = "https://script.google.com/a/macros/ngoap.ana-g.com/s/AKfycbx_HJSpZxHvQ3-u_tw3rO6Mm9KyZq7b2TsvIZo0_TG8D3IgS_0mTnOwjfHJNZKmzooGiQ/exec"; 
 
       if (gasUrl === "YOUR_GAS_WEB_APP_URL" || gasUrl.includes("AKfycbwtegjBsNGLpstkwtWVVes68UV8epC17xFsnzmxigf2oP7-KweazNxTt_lD0ummEbud")) {
         alert("コード内の gasUrl に、新しく発行したURLを貼り付けてください。");
@@ -194,30 +199,36 @@
         image: capturedDataUrl
       });
 
-      try {
-        // ★iPadにブロックされない、最も確実な通信方法（URLエンコード方式）
-        await fetch(gasUrl, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
-          body: 'data=' + encodeURIComponent(payload)
-        });
+      // ★原因特定のためのデバッグ用モニターを表示
+      const debugArea = document.getElementById('debug-area');
+      const form = document.getElementById('gas_form');
+      const input = document.getElementById('gas_data');
+      const iframe = document.getElementById('hidden_iframe');
 
-        // 成功メッセージ
-        alert("保存完了しました！\n管理者の共有ドライブに保存されました。\n削除を依頼する場合は岩田か成田までお知らせください。");
-        inputField.value = '';
-        validateInput();
-        retakeBtn.click();
+      debugArea.classList.remove('hidden');
+      
+      form.action = gasUrl;
+      input.value = payload;
 
-      } catch (error) {
-        alert('送信エラーが発生しました。ネットワークを確認してください。');
-      } finally {
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = originalHtml;
-        lucide.createIcons();
-      }
+      iframe.onload = () => {
+        // 送信が終わったら、結果が見えるように少しだけ待つ
+        setTimeout(() => {
+          alert("保存完了しました！\n管理者の共有ドライブに保存されました。\n削除を依頼する場合は岩田か成田までお知らせください。");
+          inputField.value = '';
+          validateInput();
+          retakeBtn.click();
+          debugArea.classList.add('hidden'); // 成功したらモニターを隠す
+          
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = originalHtml;
+          lucide.createIcons();
+          
+          iframe.onload = null;
+        }, 3000); // 結果を見るために3秒待ちます
+      };
+
+      // 送信実行！
+      form.submit();
     };
 
     inputField.addEventListener('input', validateInput);
